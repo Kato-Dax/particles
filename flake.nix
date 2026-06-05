@@ -1,6 +1,6 @@
 {
     inputs = {
-        nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+        nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
         flake-utils = {
             url = "github:numtide/flake-utils";
         };
@@ -24,10 +24,10 @@
                 cmake
                 fontconfig
 
-                xorg.libX11
-                xorg.libXcursor
-                xorg.libXrandr
-                xorg.libXi
+                libx11
+                libxcursor
+                libxrandr
+                libxi
 
                 vulkan-headers
                 vulkan-validation-layers

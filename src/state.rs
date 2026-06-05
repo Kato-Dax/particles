@@ -125,23 +125,23 @@ pub struct State {
 }
 impl State {
     pub async fn new(window: Arc<Window>, particle_number: i32, g: f32) -> Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             flags: wgpu::InstanceFlags::default(),
             backend_options: wgpu::BackendOptions {
                 gl: wgpu::GlBackendOptions {
                     gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
                     fence_behavior: wgpu::GlFenceBehavior::default(),
+                    debug_fns: Default::default(),
                 },
-                dx12: wgpu::Dx12BackendOptions {
-                    shader_compiler: Default::default(),
-                },
+                dx12: wgpu::Dx12BackendOptions::default(),
                 noop: wgpu::NoopBackendOptions { enable: false },
             },
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds {
                 for_resource_creation: None,
                 for_device_loss: Some(90),
             },
+            display: None,
         });
         let surface = instance.create_surface(window.clone())?;
         let adapter = instance
@@ -164,6 +164,7 @@ impl State {
                 label: None,
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
             })
             .await
             .unwrap();
@@ -354,11 +355,12 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &texture_bind_group_layout,
-                    &uniform_binding.bind_group_layout,
-                    &instances_binding.bind_group_layout,
+                    Some(&texture_bind_group_layout),
+                    Some(&uniform_binding.bind_group_layout),
+                    Some(&instances_binding.bind_group_layout),
                 ],
-                push_constant_ranges: &[],
+                immediate_size: 0,
+                // push_constant_ranges: &[],
             });
 
         let vertex_buffer_layouts = &[Vertex::desc()];
@@ -432,11 +434,12 @@ impl State {
         let mass_pipe_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Light Pipeline"),
             bind_group_layouts: &[
-                &texture_bind_group_layout,
-                &uniform_binding.bind_group_layout,
-                &masses_binding.bind_group_layout,
+                Some(&texture_bind_group_layout),
+                Some(&uniform_binding.bind_group_layout),
+                Some(&masses_binding.bind_group_layout),
             ],
-            push_constant_ranges: &[],
+            // push_constant_ranges: &[],
+            immediate_size: 0,
         });
         let mass_shader =
             device.create_shader_module(wgpu::include_wgsl!("shaders/mass_shader.wgsl"));
@@ -465,11 +468,12 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("compute pipeline layout"),
                 bind_group_layouts: &[
-                    &uniform_binding.bind_group_layout,
-                    &instances_binding.bind_group_layout,
-                    &masses_binding.bind_group_layout,
+                    Some(&uniform_binding.bind_group_layout),
+                    Some(&instances_binding.bind_group_layout),
+                    Some(&masses_binding.bind_group_layout),
                 ],
-                push_constant_ranges: &[],
+                // push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let compute_shader =
             device.create_shader_module(wgpu::include_wgsl!("shaders/compute.wgsl"));
@@ -677,7 +681,21 @@ impl State {
         }));
     }
     pub fn render(&mut self) {
-        let frame = self.surface.get_current_texture().unwrap();
+        let frame = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(_) => {
+                self.surface.configure(&self.device, &self.surface_config);
+                return;
+            },
+            wgpu::CurrentSurfaceTexture::Timeout => return,
+            wgpu::CurrentSurfaceTexture::Occluded => return,
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.surface.configure(&self.device, &self.surface_config);
+                return;
+            }
+            wgpu::CurrentSurfaceTexture::Lost => panic!("device lost"),
+            wgpu::CurrentSurfaceTexture::Validation => panic!("validation error"),
+        };
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -720,6 +738,7 @@ impl State {
                 label: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             render_pass.set_pipeline(&self.particles.pipeline);
             for mesh in &self.particles.model.meshes {
@@ -795,8 +814,8 @@ fn create_render_pipeline(
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
@@ -805,7 +824,7 @@ fn create_render_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
         cache: None,
+        multiview_mask: None,
     })
 }

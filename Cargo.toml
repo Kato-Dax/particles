@@ -17,7 +17,7 @@ rand = "0.8.4"
 rayon = "1.5.1"
 
 [dependencies.wgpu]
-version = "26.0.1"
+version = "29.0.3"
 
 [build-dependencies]
 anyhow = "1.0"
